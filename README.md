@@ -4,9 +4,9 @@ Bot Telegram per gestire la coda e i turni delle colonnine di ricarica.
 
 ## Funzionalità
 
-- Gestione degli slot di ricarica (max 5 contemporanei)
+- Gestione degli slot di ricarica (max xx contemporanei)
 - Sistema di coda automatico
-- Timer per ricariche (max 30 minuti)
+- Timer per ricariche (max xx minuti)
 - Notifiche automatiche
 - Comandi amministrativi
 
