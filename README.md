@@ -1,6 +1,6 @@
 # Green Charge Bot
 
-Bot Telegram per gestire la coda e i turni delle colonnine di ricarica di Antonio Green-Charge.
+Bot Telegram per gestire la coda e i turni delle colonnine di ricarica.
 
 ## Funzionalità
 
