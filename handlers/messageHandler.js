@@ -5,8 +5,10 @@ const adminHandler = require('./adminHandler');
 const config = require('../config');
 const logger = require('../utils/logger');
 const formatters = require('../utils/formatters');
+const penaltySystem = require('../utils/penaltySystem');
 const Queue = require('../models/queue');
 const Session = require('../models/session');
+const User = require('../models/user');
 
 /**
  * Verifica se l'utente è autorizzato a utilizzare il bot
@@ -126,6 +128,11 @@ function init(bot) {
       }
       
       const result = await queueHandler.requestCharge(userId, username);
+      
+      // Se c'è un messaggio di avviso (ad esempio per penalità), mostralo prima
+      if (result.warningMessage) {
+        await bot.sendMessage(chatId, `ℹ️ *Nota*\n\n${result.warningMessage}`, { parse_mode: 'Markdown' });
+      }
       
       if (result.slotAvailable) {
         logger.info(`Slot available for user ${userId}, sending instructions`);
@@ -303,6 +310,37 @@ function init(bot) {
     }
   });
 
+  // Comando stato_utente (nuovo)
+  bot.onText(/\/stato_utente/, async (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const username = msg.from.username || `user${userId}`;
+    
+    logger.info(`Received /stato_utente command from user ${userId}`);
+    
+    try {
+      // Verifica se l'utente è autorizzato
+      const isAuthorized = await isUserAuthorized(bot, chatId, userId, username);
+      if (!isAuthorized) {
+        sendUnauthorizedMessage(bot, chatId, username);
+        return;
+      }
+      
+      const userStatus = await userHandler.getUserStatus(userId);
+      
+      if (!userStatus.exists) {
+        bot.sendMessage(chatId, userStatus.message);
+        return;
+      }
+      
+      bot.sendMessage(chatId, userStatus.message, { parse_mode: 'Markdown' });
+      logger.info(`Sent user status to ${userId}`);
+    } catch (error) {
+      logger.error(`Error in /stato_utente command for user ${userId}:`, error);
+      bot.sendMessage(chatId, `❌ Si è verificato un errore: ${error.message}`);
+    }
+  });
+
   // Comando help
   bot.onText(/\/help/, async (msg) => {
     const chatId = msg.chat.id;
@@ -400,6 +438,9 @@ function init(bot) {
         // Comando per aggiornare i comandi del bot
         await setupBotCommands(bot);
         bot.sendMessage(chatId, '✅ Comandi del bot aggiornati con successo!');
+      } else if (command === 'check_penalties') {
+        // Comando per controllare gli utenti con penalità
+        await adminHandler.handleCheckPenalties(bot, chatId);
       } else if (command === 'set_charge_time') {
         // Comando per impostare il tempo massimo di ricarica
         const params = commandParts.slice(1);
@@ -545,6 +586,7 @@ async function setupBotCommands(bot) {
       { command: 'iniziato', description: 'Conferma l\'inizio della ricarica' },
       { command: 'terminato', description: 'Conferma la fine della ricarica' },
       { command: 'status', description: 'Visualizza lo stato attuale del sistema' },
+      { command: 'stato_utente', description: 'Visualizza il tuo stato e penalità' },
       { command: 'help', description: 'Mostra i comandi disponibili' },
       { command: 'dove_sono', description: 'Mostra ID della chat corrente' }
     ]);
@@ -562,6 +604,7 @@ async function setupBotCommands(bot) {
           { command: 'iniziato', description: 'Conferma l\'inizio della ricarica' },
           { command: 'terminato', description: 'Conferma la fine della ricarica' },
           { command: 'status', description: 'Visualizza lo stato attuale del sistema' },
+          { command: 'stato_utente', description: 'Visualizza il tuo stato e penalità' },
           { command: 'help', description: 'Mostra tutti i comandi disponibili' },
           { command: 'dove_sono', description: 'Mostra ID della chat corrente' },
           
@@ -573,6 +616,7 @@ async function setupBotCommands(bot) {
           { command: 'admin_set_reminder_time', description: 'Imposta il tempo di promemoria' },
           { command: 'admin_reset_slot', description: 'Termina forzatamente la sessione di un utente' },
           { command: 'admin_remove_queue', description: 'Rimuove un utente dalla coda' },
+          { command: 'admin_check_penalties', description: 'Visualizza utenti con penalità' },
           { command: 'admin_notify_all', description: 'Invia un messaggio a tutti gli utenti' },
           { command: 'admin_reset_system', description: 'Resetta completamente il sistema' },
           { command: 'admin_help', description: 'Mostra i comandi admin disponibili' },
