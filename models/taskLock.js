@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
-
 /**
- * Schema per i lock delle operazioni
+ * Modello per i lock delle operazioni
  * Utilizzato per coordinare operazioni tra istanze diverse
  */
+const mongoose = require('mongoose');
+
 const taskLockSchema = new mongoose.Schema({
   task_name: {
     type: String,
