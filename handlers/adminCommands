@@ -27,7 +27,7 @@ class AdminCommands {
         { command: 'start', description: 'Avvia il bot' },
         { command: 'prenota', description: 'Prenota uno slot o mettiti in coda' },
         { command: 'cancella', description: 'Cancella la tua prenotazione in coda' },
-        { command: 'iniziato', description: 'Conferma l\'inizio della ricarica' },
+        { command: 'iniziato', description: 'Conferma l\'inizio della ricarica o specifica durata' },
         { command: 'terminato', description: 'Conferma la fine della ricarica' },
         { command: 'status', description: 'Visualizza lo stato attuale del sistema' },
         { command: 'stato_utente', description: 'Visualizza il tuo stato e penalità' },
@@ -45,7 +45,7 @@ class AdminCommands {
             { command: 'start', description: 'Avvia il bot' },
             { command: 'prenota', description: 'Prenota uno slot o mettiti in coda' },
             { command: 'cancella', description: 'Cancella la tua prenotazione in coda' },
-            { command: 'iniziato', description: 'Conferma l\'inizio della ricarica' },
+            { command: 'iniziato', description: 'Conferma l\'inizio della ricarica o specifica durata' },
             { command: 'terminato', description: 'Conferma la fine della ricarica' },
             { command: 'status', description: 'Visualizza lo stato attuale del sistema' },
             { command: 'stato_utente', description: 'Visualizza il tuo stato e penalità' },
@@ -186,7 +186,7 @@ class AdminCommands {
         process.env.MAX_CHARGE_TIME = minutes.toString();
       }
       
-      bot.sendMessage(chatId, `✅ Tempo massimo di ricarica impostato a ${minutes} minuti.`);
+      bot.sendMessage(chatId, `✅ Tempo massimo di ricarica predefinito impostato a ${minutes} minuti.\n\nGli utenti possono comunque impostare un tempo personalizzato con /iniziato [minuti].`);
     } catch (error) {
       logger.error('Error in /admin_set_charge_time command:', error);
       bot.sendMessage(chatId, `❌ Errore: ${error.message}`);
@@ -304,10 +304,15 @@ class AdminCommands {
         
         const { session, durationMinutes } = result;
         
+        // Determina se la sessione aveva durata personalizzata
+        const durationInfo = session.custom_duration 
+          ? `(durata personalizzata: ${session.duration_minutes} min)` 
+          : `(durata predefinita: ${config.MAX_CHARGE_TIME} min)`;
+        
         bot.sendMessage(chatId, 
           `✅ Sessione di @${targetUsername} terminata forzatamente.\n\n` +
           `Slot ${session.slot_number} ora disponibile.\n` +
-          `Durata sessione: ${durationMinutes} minuti.`,
+          `Durata sessione: ${durationMinutes} minuti ${durationInfo}.`,
           { parse_mode: 'Markdown' });
         
         // Notifica l'utente della terminazione forzata
@@ -566,7 +571,12 @@ class AdminCommands {
       if (status.active_sessions.length > 0) {
         message += `\n`;
         status.active_sessions.forEach((session, index) => {
-          message += `${index + 1}. Slot #${session.slot_number}: @${session.username}\n`;
+          // Aggiungi indicazione se la durata è personalizzata
+          const durationInfo = session.custom_duration 
+            ? `(durata personalizzata: ${session.duration_minutes} min)` 
+            : `(durata predefinita: ${session.duration_minutes || config.MAX_CHARGE_TIME} min)`;
+            
+          message += `${index + 1}. Slot #${session.slot_number}: @${session.username} ${durationInfo}\n`;
           message += `   • Inizio: ${formatters.formatTime(session.start_time)}\n`;
           message += `   • Fine prevista: ${formatters.formatTime(session.end_time)}\n`;
           message += `   • Tempo rimasto: ${session.remaining_minutes} min\n`;
@@ -621,8 +631,9 @@ class AdminCommands {
       // Informazioni sulle variabili di configurazione
       message += `⚙️ *Configurazione attuale*\n`;
       message += `- Slot totali: ${config.MAX_SLOTS}\n`;
-      message += `- Tempo massimo ricarica: ${config.MAX_CHARGE_TIME} min\n`;
+      message += `- Tempo massimo predefinito: ${config.MAX_CHARGE_TIME} min\n`;
       message += `- Tempo promemoria: ${config.REMINDER_TIME} min\n`;
+      message += `- Gli utenti possono impostare una durata personalizzata con /iniziato [minuti]\n`;
       
       bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     } catch (error) {
