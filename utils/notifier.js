@@ -235,7 +235,8 @@ async function checkExpiringSessions(bot) {
         const reminderMessage = formatters.formatReminderMessage(
           session.username, 
           remainingMinutes, 
-          session.end_time
+          session.end_time,
+          session.custom_duration // passa l'informazione se la durata è personalizzata
         );
         
         // Invia la notifica
@@ -293,10 +294,14 @@ async function checkExpiredSessions(bot) {
     
     for (const session of expiredSessions) {
       try {
+        // Ottieni la durata effettiva dalla sessione
+        const chargeDuration = session.duration_minutes || config.MAX_CHARGE_TIME;
+        
         // Genera il messaggio di timeout
         const timeoutMessage = formatters.formatTimeoutMessage(
           session.username, 
-          config.MAX_CHARGE_TIME
+          chargeDuration,
+          session.custom_duration // passa l'informazione se la durata è personalizzata
         );
         
         // Invia la notifica
@@ -384,10 +389,15 @@ async function checkOverdueSessions(bot) {
           
           // Notifica anche all'admin per ritardi gravi (ogni 30 minuti)
           if (config.ADMIN_USER_ID && overdueMinutes >= 30 && overdueMinutes % 30 === 0) {
+            // Informazioni sulla durata personalizzata
+            const durationInfo = session.custom_duration 
+              ? `(durata personalizzata: ${session.duration_minutes} minuti)` 
+              : `(durata predefinita: ${config.MAX_CHARGE_TIME} minuti)`;
+            
             await bot.sendMessage(
               config.ADMIN_USER_ID,
               `🚨 *Segnalazione ritardo grave*\n\n` +
-              `L'utente @${session.username} sta occupando lo slot ${session.slot_number} da *${overdueMinutes} minuti* oltre il tempo massimo.`,
+              `L'utente @${session.username} sta occupando lo slot ${session.slot_number} da *${overdueMinutes} minuti* oltre il tempo massimo ${durationInfo}.`,
               { parse_mode: 'Markdown' }
             );
           }
