@@ -1,3 +1,6 @@
+/**
+ * Modello per le notifiche di avvio
+ */
 const mongoose = require('mongoose');
 
 const startupNotificationSchema = new mongoose.Schema({
