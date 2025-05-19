@@ -1,3 +1,7 @@
+/**
+ * Gestore delle sessioni di ricarica
+ * Gestisce l'inizio e la fine delle sessioni di ricarica
+ */
 const Session = require('../models/session');
 const System = require('../models/system');
 const Queue = require('../models/queue');
@@ -14,9 +18,10 @@ const penaltySystem = require('../utils/penaltySystem');
  * Inizia una nuova sessione di ricarica
  * @param {Number} userId - ID Telegram dell'utente
  * @param {String} username - Username Telegram dell'utente
+ * @param {Number} chargeDuration - Durata personalizzata in minuti (opzionale)
  * @returns {Promise<Object>} - Oggetto sessione creata
  */
-async function startSession(userId, username) {
+async function startSession(userId, username, chargeDuration = null) {
   try {
     // Verifica l'idoneità dell'utente (controllo ban)
     const eligibility = await penaltySystem.checkUserEligibility(userId);
@@ -69,7 +74,11 @@ async function startSession(userId, username) {
     
     // Calcola il tempo di fine
     const startTime = new Date();
-    const endTime = new Date(startTime.getTime() + config.MAX_CHARGE_TIME * 60000);
+    
+    // Usa la durata personalizzata se specificata, altrimenti usa quella di default
+    const actualDuration = chargeDuration || config.MAX_CHARGE_TIME;
+    
+    const endTime = new Date(startTime.getTime() + actualDuration * 60000);
     
     // Crea una nuova sessione
     const session = new Session({
@@ -78,7 +87,9 @@ async function startSession(userId, username) {
       start_time: startTime,
       end_time: endTime,
       slot_number: slotNumber,
-      status: 'active'
+      status: 'active',
+      custom_duration: chargeDuration !== null, // Flag per indicare se la durata è personalizzata
+      duration_minutes: actualDuration // Memorizza la durata effettiva
     });
     
     await session.save();
@@ -88,7 +99,7 @@ async function startSession(userId, username) {
     system.active_sessions.push(session._id);
     await system.save();
     
-    logger.info(`New charging session started for user ${username} (${userId}) in slot ${slotNumber}`);
+    logger.info(`New charging session started for user ${username} (${userId}) in slot ${slotNumber} with duration ${actualDuration} minutes`);
     
     return session;
   } catch (error) {
@@ -153,7 +164,11 @@ async function endSession(userId, status = 'completed') {
       }
     }
     
-    logger.info(`Charging session ended for user ${session.username} (${userId}) - Duration: ${durationMinutes} minutes, Status: ${status}`);
+    // Aggiungi informazione sulla durata personalizzata nel log
+    const durationType = session.custom_duration ? "personalizzata" : "predefinita";
+    const actualDuration = session.duration_minutes || config.MAX_CHARGE_TIME;
+    
+    logger.info(`Charging session ended for user ${session.username} (${userId}) - Duration: ${durationMinutes} minutes, Status: ${status}, Type: ${durationType} (${actualDuration} min)`);
     
     return {
       session,
