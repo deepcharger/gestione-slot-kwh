@@ -1,3 +1,5 @@
+const config = require('../config');
+
 /**
  * Formatta un timestamp in formato HH:MM usando il fuso orario italiano (UTC+2)
  * @param {Date|String} timestamp - Timestamp da formattare
@@ -96,7 +98,7 @@ function formatStatusMessage(status) {
  */
 function formatHelpMessage(isAdmin = false) {
   let message = `
-🔋 *Guida a Green-Charge* 🔋
+🔋 *Guida a SlotManager Bot* 🔋
 
 *Come ricaricare il tuo veicolo:*
 
@@ -105,12 +107,12 @@ function formatHelpMessage(isAdmin = false) {
    • Se tutte le colonnine sono occupate, verrai messo in coda
 
 2️⃣ Quando arriva il tuo turno:
-   • Vai alla colonnina e attivala tramite l'app
+   • Vai alla colonnina e attivala
    • Conferma l'inizio con */iniziato*
    • *Hai 5 minuti* per iniziare, altrimenti perderai il turno
 
 3️⃣ Durante la ricarica:
-   • Hai *30 minuti* massimo a disposizione
+   • Hai *${config.MAX_CHARGE_TIME} minuti* massimo a disposizione
    • Riceverai un promemoria 5 minuti prima della scadenza
 
 4️⃣ Al termine:
@@ -122,13 +124,15 @@ function formatHelpMessage(isAdmin = false) {
 📝 */prenota* - Richiedi una colonnina o mettiti in coda
 ❌ */cancella* - Rinuncia al tuo posto in coda
 📊 */status* - Verifica quali colonnine sono libere/occupate 
+👤 */stato_utente* - Visualizza il tuo stato e eventuali penalità
 ❓ */help* - Visualizza questa guida
 📍 */dove_sono* - Mostra l'ID della chat attuale
 
 *Consigli:*
 - Ricevuta la notifica, hai 5 minuti per iniziare
 - Se cambi idea o hai un imprevisto, usa */cancella* per liberare il posto
-- Rispetta il tempo massimo di 30 minuti per la cortesia di tutti
+- Rispetta il tempo massimo per la cortesia di tutti
+- Ritardi frequenti comportano penalità e possibili sospensioni temporanee
 `;
 
   // Aggiungi le istruzioni per l'admin se l'utente è admin
@@ -149,6 +153,7 @@ function formatHelpMessage(isAdmin = false) {
 ⏹️ */admin_reset_slot @username* - Termina forzatamente la sessione
 🚫 */admin_remove_queue @username* - Rimuove un utente dalla coda
 📣 */admin_notify_all [messaggio]* - Invia un messaggio a tutti
+👥 */admin_check_penalties* - Visualizza utenti con penalità
 
 *Diagnostica:*
 🔍 */dbtest* - Verifica lo stato del database
@@ -213,14 +218,14 @@ function formatSessionStartMessage(session) {
 
 ⏱️ Hai iniziato alle: *${formatTime(session.start_time)}*
 ⌛ Termine previsto: *${formatTime(session.end_time)}*
-⏳ Tempo massimo: *30 minuti*
+⏳ Tempo massimo: *${config.MAX_CHARGE_TIME} minuti*
 
 📱 *Cosa fare ora:*
 - Riceverai un promemoria 5 minuti prima della scadenza
 - Quando termini la ricarica, scollega il veicolo
 - Conferma con */terminato* per liberare lo slot
 
-⚠️ *Importante:* Se non confermi entro il tempo massimo, potresti ricevere notifiche di promemoria.
+⚠️ *Importante:* Se non confermi entro il tempo massimo, riceverai penalità che potrebbero limitare l'uso futuro del servizio.
 `;
 }
 
@@ -234,7 +239,7 @@ function formatSessionEndMessage(result) {
 ✅ *Ricarica terminata con successo!*
 
 ⏱️ Durata totale: *${result.durationMinutes} minuti*
-🔋 Grazie per aver utilizzato Green-Charge!
+🔋 Grazie per aver utilizzato SlotManager Bot!
 
 👍 Hai liberato lo slot per gli altri utenti.
 Vuoi prenotare una nuova ricarica? Usa */prenota*
@@ -249,7 +254,7 @@ Vuoi prenotare una nuova ricarica? Usa */prenota*
  */
 function formatWelcomeMessage(username, userId) {
   return `
-👋 *Benvenuto a Green-Charge, @${username}!*
+👋 *Benvenuto a SlotManager Bot, @${username}!*
 
 Questo bot gestisce la coda per le colonnine di ricarica in modo semplice e veloce.
 
@@ -308,9 +313,8 @@ function formatSlotAvailableMessage(username, userId, maxChargeTime) {
 *Ecco cosa fare:*
 
 1️⃣ Vai alla colonnina di ricarica
-2️⃣ Attivala tramite l'app Antonio Green-Charge
-3️⃣ Collega il tuo veicolo
-4️⃣ Conferma l'inizio con */iniziato*
+2️⃣ Attivala e collega il tuo veicolo
+3️⃣ Conferma l'inizio con */iniziato*
 
 ⏱️ Ricorda: hai a disposizione massimo *${maxChargeTime} minuti*.
 
@@ -334,9 +338,8 @@ function formatNotificationMessage(username, userId, maxChargeTime) {
 *Cosa fare ora:*
 
 1️⃣ Vai subito alla colonnina di ricarica
-2️⃣ Attivala tramite l'app Antonio Green-Charge
-3️⃣ Collega il tuo veicolo
-4️⃣ IMPORTANTE: Conferma l'inizio con */iniziato*
+2️⃣ Attivala e collega il tuo veicolo
+3️⃣ IMPORTANTE: Conferma l'inizio con */iniziato*
 
 ⏱️ Avrai a disposizione massimo *${maxChargeTime} minuti* per la ricarica.
 
@@ -381,13 +384,106 @@ function formatTimeoutMessage(username, maxChargeTime) {
 Il tuo tempo di ricarica di *${maxChargeTime} minuti* è terminato.
 
 *Cosa fare immediatamente:*
-1. Concludi la ricarica sull'app
+1. Concludi la ricarica
 2. Scollega il veicolo dalla colonnina
 3. Conferma con */terminato* per liberare lo slot
 
 ⚡ Altri utenti sono in attesa per utilizzare la colonnina.
 Grazie per la tua collaborazione!
+
+⚠️ *Nota:* I ritardi comportano penalità che possono limitare l'uso futuro del servizio.
 `;
+}
+
+/**
+ * Formatta un messaggio progressivo di ritardo
+ * @param {String} username - Username dell'utente
+ * @param {Number} overtimeMinutes - Minuti di ritardo
+ * @returns {String} - Messaggio formattato
+ */
+function formatOvertimeMessage(username, overtimeMinutes) {
+  if (overtimeMinutes >= 5 && overtimeMinutes < 15) {
+    return `
+⚠️ *ATTENZIONE*
+
+@${username}, il tuo tempo è scaduto da *${overtimeMinutes} minuti*.
+
+Per favore, concludi la ricarica e libera la colonnina appena possibile.
+Ricorda che i ritardi comportano penalità (1 punto).
+`;
+  } else if (overtimeMinutes >= 15 && overtimeMinutes < 30) {
+    return `
+🔴 *RITARDO SIGNIFICATIVO*
+
+@${username}, il tuo tempo è scaduto da *${overtimeMinutes} minuti*!
+
+Ti preghiamo di liberare immediatamente la colonnina.
+⚠️ Stai accumulando 2 punti penalità per questo ritardo.
+Al raggiungimento di 10 punti il tuo account sarà temporaneamente sospeso.
+`;
+  } else if (overtimeMinutes >= 30) {
+    return `
+🚨 *VIOLAZIONE GRAVE*
+
+@${username}, il tuo tempo è scaduto da *${overtimeMinutes} minuti*!
+
+Stai impedendo ad altri utenti di utilizzare la colonnina.
+🔴 *Questo comportamento comporta 3 punti penalità per ogni 30 minuti di ritardo e potrebbe portare al ban*
+
+Libera IMMEDIATAMENTE la colonnina.
+`;
+  }
+
+  return "";
+}
+
+/**
+ * Formatta un messaggio per lo stato utente
+ * @param {Object} user - Utente
+ * @returns {String} - Messaggio formattato
+ */
+function formatUserStatusMessage(user) {
+  let message = `👤 *Il tuo stato attuale*\n\n`;
+  
+  message += `Username: @${user.username}\n`;
+  message += `Ricariche completate: *${user.total_charges}*\n`;
+  message += `Tempo totale di ricarica: *${user.total_time} min*\n`;
+  
+  if (user.penalty_points > 0) {
+    message += `⚠️ Punti penalità: *${user.penalty_points}*\n`;
+    message += `Ultimo ritardo: ${formatDate(user.last_penalty_date)}\n`;
+    
+    if (user.temporarily_banned) {
+      message += `🚫 *Account temporaneamente sospeso fino al ${formatDate(user.ban_end_date)}*\n`;
+    } else if (user.penalty_points >= 7) {
+      message += `⚠️ *Attenzione: sei vicino alla soglia di sospensione (10 punti)*\n`;
+    }
+    
+    message += `\nI punti penalità vengono azzerati 30 giorni dopo l'ultimo ritardo.`;
+  } else {
+    message += `✅ Nessuna penalità attiva\n`;
+  }
+  
+  return message;
+}
+
+/**
+ * Formatta una data in formato italiano
+ * @param {Date} date - Data
+ * @returns {String} - Data formattata
+ */
+function formatDate(date) {
+  if (!date) return 'N/A';
+  
+  const options = { 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  };
+  
+  return new Date(date).toLocaleDateString('it-IT', options);
 }
 
 module.exports = {
@@ -405,5 +501,8 @@ module.exports = {
   formatSlotAvailableMessage,
   formatNotificationMessage,
   formatReminderMessage,
-  formatTimeoutMessage
+  formatTimeoutMessage,
+  formatOvertimeMessage,
+  formatUserStatusMessage,
+  formatDate
 };
