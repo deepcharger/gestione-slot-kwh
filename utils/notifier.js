@@ -1,17 +1,22 @@
+/**
+ * Sistema di notifiche
+ * Gestisce le notifiche automatiche agli utenti in base allo stato delle sessioni
+ */
+const mongoose = require('mongoose');
+const logger = require('./logger');
+const config = require('../config');
+const formatters = require('./formatters');
+const penaltySystem = require('./penaltySystem');
 const Session = require('../models/session');
-const System = require('../models/system');
 const Queue = require('../models/queue');
 const User = require('../models/user');
-const moment = require('moment');
-const mongoose = require('mongoose'); // Aggiunto riferimento a mongoose
-const config = require('../config'); // Aggiunto riferimento a config
-const logger = require('../utils/logger');
-const formatters = require('../utils/formatters');
-const penaltySystem = require('../utils/penaltySystem');
+const queueHandler = require('../handlers/queueHandler');
 
 /**
  * Avvia il sistema di notifiche periodiche
  * @param {Object} bot - Istanza del bot Telegram
+ * @param {Function} executeWithLock - Funzione per eseguire operazioni con lock
+ * @param {Function} isActiveInstance - Funzione per verificare se l'istanza è attiva
  * @returns {Object} - Riferimenti ai timer avviati
  */
 function startNotificationSystem(bot, executeWithLock, isActiveInstance) {
@@ -124,9 +129,6 @@ function startNotificationSystem(bot, executeWithLock, isActiveInstance) {
         logger.warn('Sistema di notifiche: MongoDB non connesso, skip controllo timeout della coda');
         return;
       }
-      
-      // Esegui la funzione checkQueueTimeouts del modulo queueHandler
-      const queueHandler = require('../handlers/queueHandler');
       
       if (executeWithLock) {
         await executeWithLock('check_queue_timeouts', async () => {
