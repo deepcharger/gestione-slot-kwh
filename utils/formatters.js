@@ -66,7 +66,12 @@ function formatStatusMessage(status) {
   if (status.active_sessions.length > 0) {
     message += `\n⚡ *Utenti attualmente in ricarica:*\n`;
     status.active_sessions.forEach((session, index) => {
-      message += `${index + 1}. @${session.username} (⏱️ termina tra *${session.remaining_minutes} min*)\n`;
+      // Visualizza se la durata è personalizzata
+      const durationInfo = session.custom_duration 
+        ? `(durata personalizzata)` 
+        : ``;
+      
+      message += `${index + 1}. @${session.username} ⏱️ termina tra *${session.remaining_minutes} min* ${durationInfo}\n`;
     });
   } else {
     message += `\n✨ *Nessun utente attualmente in ricarica.*\n`;
@@ -111,11 +116,12 @@ function formatHelpMessage(isAdmin = false) {
 
 2️⃣ Quando arriva il tuo turno:
    • Vai alla colonnina e attivala
-   • Conferma l'inizio con */iniziato*
+   • Conferma l'inizio con */iniziato* (tempo predefinito)
+   • Oppure specifica la durata: */iniziato 45* (per 45 minuti)
    • *Hai 5 minuti* per iniziare, altrimenti perderai il turno
 
 3️⃣ Durante la ricarica:
-   • Hai *${config.MAX_CHARGE_TIME} minuti* massimo a disposizione
+   • Hai a disposizione il tempo che hai specificato
    • Riceverai un promemoria 5 minuti prima della scadenza
 
 4️⃣ Al termine:
@@ -148,7 +154,7 @@ function formatHelpMessage(isAdmin = false) {
 📊 */admin_status* - Stato dettagliato del sistema
 📈 */admin_stats* - Statistiche del sistema
 🔄 */admin_set_max_slots [numero]* - Imposta il numero massimo di slot
-🔄 */admin_set_charge_time [minuti]* - Imposta il tempo massimo di ricarica
+🔄 */admin_set_charge_time [minuti]* - Imposta il tempo massimo di ricarica predefinito
 🔄 */admin_set_reminder_time [minuti]* - Imposta il tempo di promemoria
 🗑️ */admin_reset_system* - Resetta completamente il sistema (richiede conferma)
 
@@ -216,12 +222,19 @@ function estimateWaitTime(status) {
  * @returns {String} - Messaggio formattato
  */
 function formatSessionStartMessage(session) {
+  // Determina se la durata è personalizzata o predefinita
+  const isCustomDuration = session.custom_duration;
+  const durationMinutes = session.duration_minutes || config.MAX_CHARGE_TIME;
+  const durationText = isCustomDuration 
+    ? `*${durationMinutes} minuti* (personalizzato)` 
+    : `*${durationMinutes} minuti* (predefinito)`;
+  
   return `
 ✅ *Ricarica iniziata con successo!*
 
 ⏱️ Hai iniziato alle: *${formatTime(session.start_time)}*
 ⌛ Termine previsto: *${formatTime(session.end_time)}*
-⏳ Tempo massimo: *${config.MAX_CHARGE_TIME} minuti*
+⏳ Tempo di ricarica: ${durationText}
 
 📱 *Cosa fare ora:*
 - Riceverai un promemoria 5 minuti prima della scadenza
@@ -266,6 +279,8 @@ Questo bot gestisce la coda per le colonnine di ricarica in modo semplice e velo
 - Usa */prenota* per richiedere una colonnina
 - Se tutte sono occupate, verrai messo in coda
 - Riceverai una notifica quando sarà il tuo turno
+- Per iniziare una ricarica con durata personalizzata usa */iniziato [minuti]*
+  Esempio: */iniziato 45* per una ricarica di 45 minuti
 
 📊 Per verificare lo stato delle colonnine usa */status*
 ❓ Per maggiori informazioni usa */help*
@@ -291,6 +306,7 @@ function formatQueueMessage(username, userId, position) {
 - Quando si libera uno slot, gli utenti vengono avvisati in ordine di coda
 - Riceverai una notifica quando sarà il tuo turno
 - Avrai 5 minuti per iniziare la ricarica, dopo la notifica
+- Potrai specificare una durata personalizzata con */iniziato [minuti]*
 
 *Opzioni disponibili:*
 - Usa */status* per controllare la tua posizione in coda
@@ -317,9 +333,9 @@ function formatSlotAvailableMessage(username, userId, maxChargeTime) {
 
 1️⃣ Vai alla colonnina di ricarica
 2️⃣ Attivala e collega il tuo veicolo
-3️⃣ Conferma l'inizio con */iniziato*
-
-⏱️ Ricorda: hai a disposizione massimo *${maxChargeTime} minuti*.
+3️⃣ Conferma l'inizio con uno di questi comandi:
+   • */iniziato* - Per usare il tempo predefinito (${maxChargeTime} minuti)
+   • */iniziato 45* - Per specificare una durata di 45 minuti
 
 ⚠️ *Importante:* Se non confermi l'inizio con */iniziato*, lo slot rimarrà riservato per te ma non risulterai in ricarica.
 `;
@@ -342,9 +358,9 @@ function formatNotificationMessage(username, userId, maxChargeTime) {
 
 1️⃣ Vai subito alla colonnina di ricarica
 2️⃣ Attivala e collega il tuo veicolo
-3️⃣ IMPORTANTE: Conferma l'inizio con */iniziato*
-
-⏱️ Avrai a disposizione massimo *${maxChargeTime} minuti* per la ricarica.
+3️⃣ Conferma l'inizio con uno di questi comandi:
+   • */iniziato* - Per usare il tempo predefinito (${maxChargeTime} minuti)
+   • */iniziato 45* - Per specificare una durata di 45 minuti
 
 ⚠️ *ATTENZIONE: Hai solo 5 minuti per confermare* l'inizio con */iniziato*, altrimenti perderai il turno e lo slot passerà al prossimo utente in coda.
 
@@ -357,18 +373,21 @@ Se non puoi più ricaricare, usa */cancella* per liberare subito lo slot.
  * @param {String} username - Username dell'utente
  * @param {Number} remainingMinutes - Minuti rimanenti
  * @param {Date} endTime - Orario di fine ricarica
+ * @param {Boolean} isCustomDuration - Indica se la durata è personalizzata
  * @returns {String} - Messaggio formattato
  */
-function formatReminderMessage(username, remainingMinutes, endTime) {
+function formatReminderMessage(username, remainingMinutes, endTime, isCustomDuration = false) {
+  const durationText = isCustomDuration ? "(durata personalizzata)" : "";
+  
   return `
 ⏰ *Promemoria ricarica, @${username}*
 
-Ti restano solo *${remainingMinutes} minuti* prima del termine.
+Ti restano solo *${remainingMinutes} minuti* prima del termine ${durationText}.
 
 *Informazioni:*
 - La ricarica terminerà alle *${formatTime(endTime)}*
 - Prepara il veicolo per essere scollegato
-- Al termine, conferma con */terminato*
+- Al termine, conferma con */terminato* per liberare lo slot
 
 Grazie per la collaborazione! Altri utenti potrebbero essere in attesa. 👍
 `;
@@ -377,14 +396,19 @@ Grazie per la collaborazione! Altri utenti potrebbero essere in attesa. 👍
 /**
  * Formatta un messaggio di timeout per la fine della ricarica
  * @param {String} username - Username dell'utente
- * @param {Number} maxChargeTime - Tempo massimo di ricarica
+ * @param {Number} chargeDuration - Tempo di ricarica in minuti
+ * @param {Boolean} isCustomDuration - Indica se la durata è personalizzata
  * @returns {String} - Messaggio formattato
  */
-function formatTimeoutMessage(username, maxChargeTime) {
+function formatTimeoutMessage(username, chargeDuration, isCustomDuration = false) {
+  const durationText = isCustomDuration 
+    ? `personalizzato di *${chargeDuration} minuti*` 
+    : `di *${chargeDuration} minuti*`;
+  
   return `
 ⚠️ *TEMPO SCADUTO, @${username}*
 
-Il tuo tempo di ricarica di *${maxChargeTime} minuti* è terminato.
+Il tuo tempo di ricarica ${durationText} è terminato.
 
 *Cosa fare immediatamente:*
 1. Concludi la ricarica
