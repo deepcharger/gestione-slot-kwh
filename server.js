@@ -45,7 +45,7 @@ app.get('/setup-webhook', async (req, res) => {
 });
 
 // Stampa informazioni all'avvio
-logger.info('====== AVVIO BOT GREEN-CHARGE (WEBHOOK MODE) ======');
+logger.info('====== AVVIO BOT SLOTMANAGER (WEBHOOK MODE) ======');
 logger.info(`Versione Node: ${process.version}`);
 logger.info(`Versione mongoose: ${mongoose.version}`);
 logger.info(`Bot token length: ${config.BOT_TOKEN ? config.BOT_TOKEN.length : 'undefined'}`);
