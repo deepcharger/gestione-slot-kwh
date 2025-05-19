@@ -125,8 +125,9 @@ mongoose.connect(config.MONGODB_URI, mongooseOptions)
     // Inizializza gli handler dei messaggi
     await messageHandler.init(bot);
     
-    // Avvia il sistema di notifiche
-    notificationSystem = notifier.startNotificationSystem(bot);
+    // Avvia il sistema di notifiche - CON MODIFICHE:
+    // Passo parametri opzionali null per compatibilità con la nuova versione
+    notificationSystem = notifier.startNotificationSystem(bot, null, null);
     
     // Sistema di rilevamento risveglio da sleep
     // Verifica periodicamente se il servizio è stato risvegliato
@@ -137,8 +138,11 @@ mongoose.connect(config.MONGODB_URI, mongooseOptions)
         logger.info('Rilevato possibile risveglio da spin down, riavvio sistema notifiche');
         if (notificationSystem && notificationSystem.stop) {
           notificationSystem.stop();
+          logger.info('Sistema di notifiche precedente fermato');
         }
-        notificationSystem = notifier.startNotificationSystem(bot);
+        // MODIFICATO: Passo parametri opzionali null per compatibilità con la nuova versione
+        notificationSystem = notifier.startNotificationSystem(bot, null, null);
+        logger.info('Nuovo sistema di notifiche avviato dopo risveglio');
         lastActiveTime = now;
       }
     }, 5 * 60 * 1000); // Controlla ogni 5 minuti
