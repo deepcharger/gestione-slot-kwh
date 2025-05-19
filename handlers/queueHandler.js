@@ -1,3 +1,7 @@
+/**
+ * Gestore della coda e degli slot
+ * Gestisce le prenotazioni, le code e gli slot disponibili
+ */
 const Session = require('../models/session');
 const Queue = require('../models/queue');
 const System = require('../models/system');
@@ -6,6 +10,7 @@ const config = require('../config');
 const moment = require('moment');
 const logger = require('../utils/logger');
 const penaltySystem = require('../utils/penaltySystem');
+const formatters = require('../utils/formatters');
 
 /**
  * Richiede uno slot di ricarica
@@ -393,7 +398,9 @@ async function getSystemStatus() {
         slot_number: session.slot_number,
         start_time: session.start_time,
         end_time: session.end_time,
-        remaining_minutes: remainingTime
+        remaining_minutes: remainingTime,
+        custom_duration: session.custom_duration || false, // Aggiungi l'informazione sulla durata personalizzata
+        duration_minutes: session.duration_minutes || config.MAX_CHARGE_TIME // Aggiungi la durata effettiva
       };
     });
     
