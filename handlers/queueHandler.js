@@ -5,7 +5,7 @@ const User = require('../models/user');
 const config = require('../config');
 const moment = require('moment');
 const logger = require('../utils/logger');
-const formatters = require('../utils/formatters');
+const penaltySystem = require('../utils/penaltySystem');
 
 /**
  * Richiede uno slot di ricarica
@@ -16,6 +16,16 @@ const formatters = require('../utils/formatters');
 async function requestCharge(userId, username) {
   try {
     logger.info(`User ${userId} (${username}) requesting a charging slot`);
+    
+    // Verifica l'idoneità dell'utente (controllo penalità e ban)
+    const eligibility = await penaltySystem.checkUserEligibility(userId);
+    if (!eligibility.eligible) {
+      logger.info(`User ${userId} (${username}) is banned until ${eligibility.user.ban_end_date}`);
+      throw new Error(eligibility.message);
+    }
+    
+    // Se c'è un messaggio sulla idoneità (per esempio: "Ban terminato"), includi questo nel risultato
+    let warningMessage = eligibility.message || null;
     
     // Controlla se l'utente è già in una sessione attiva
     const activeSession = await Session.findOne({ 
@@ -54,7 +64,8 @@ async function requestCharge(userId, username) {
       logger.info(`Slot available (${system.slots_available}/${system.total_slots})`);
       return {
         slotAvailable: true,
-        message: 'Slot disponibile. Puoi procedere con la ricarica.'
+        message: 'Slot disponibile. Puoi procedere con la ricarica.',
+        warningMessage: warningMessage
       };
     } else {
       // Aggiungi l'utente alla coda
@@ -78,7 +89,8 @@ async function requestCharge(userId, username) {
       return {
         slotAvailable: false,
         position,
-        message: 'Tutti gli slot sono occupati. Sei stato aggiunto alla coda.'
+        message: 'Tutti gli slot sono occupati. Sei stato aggiunto alla coda.',
+        warningMessage: warningMessage
       };
     }
   } catch (error) {
@@ -204,6 +216,29 @@ async function notifyNextInQueue(bot) {
     if (!nextUser) {
       logger.info('No users in queue');
       return null;
+    }
+    
+    // Verifica se l'utente è bannato (controllo nuovo)
+    const eligibility = await penaltySystem.checkUserEligibility(nextUser.telegram_id);
+    if (!eligibility.eligible) {
+      logger.info(`User ${nextUser.username} (${nextUser.telegram_id}) is banned, skipping and removing from queue`);
+      
+      // Rimuovi l'utente bannato dalla coda
+      await removeFromQueue(nextUser.telegram_id);
+      
+      // Notifica all'utente che è stato rimosso dalla coda
+      if (bot) {
+        bot.sendMessage(
+          nextUser.telegram_id,
+          `⚠️ *Sei stato rimosso dalla coda*\n\n` +
+          `Il tuo account è attualmente sospeso fino al ${penaltySystem.formatDate(eligibility.user.ban_end_date)}.\n\n` +
+          `Motivo: troppe penalità accumulate per ritardi eccessivi.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+      
+      // Riprova con il prossimo utente
+      return await notifyNextInQueue(bot);
     }
     
     // Aggiorna lo stato dell'utente in coda (notificato ma non rimosso)
@@ -519,6 +554,11 @@ async function getSystemStats() {
       last_charge: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // ultimi 30 giorni
     });
     
+    // Statistiche penalità (nuove)
+    logger.info('Getting penalty statistics');
+    const usersWithPenalties = await User.countDocuments({ penalty_points: { $gt: 0 } });
+    const bannedUsers = await User.countDocuments({ temporarily_banned: true });
+    
     logger.info('Returning complete statistics');
     return {
       total_slots: system.total_slots,
@@ -527,6 +567,8 @@ async function getSystemStats() {
       avg_charge_time: avgTime,
       total_users: totalUsers,
       active_users: activeUsers,
+      users_with_penalties: usersWithPenalties,
+      banned_users: bannedUsers,
       current_status: {
         slots_available: system.slots_available,
         slots_occupied: system.total_slots - system.slots_available,
