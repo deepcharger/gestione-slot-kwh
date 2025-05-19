@@ -261,12 +261,35 @@ class CommandRouter {
    * @param {Number} chatId - ID della chat
    * @param {Number} userId - ID dell'utente
    * @param {String} username - Username dell'utente
+   * @param {Object} msg - Messaggio Telegram
+   * @param {Array} args - Argomenti del comando
    */
-  async handleIniziato(bot, chatId, userId, username) {
+  async handleIniziato(bot, chatId, userId, username, msg, args) {
     try {
-      const session = await sessionHandler.startSession(userId, username);
+      // Controlla se è stato specificato un tempo di ricarica
+      let chargeDuration = null;
       
-      logger.info(`Session started for user ${userId}, slot ${session.slot_number}`);
+      if (args.length > 0) {
+        const specifiedDuration = parseInt(args[0]);
+        
+        // Verifica che il tempo specificato sia valido (da 1 a 480 minuti - massimo 8 ore)
+        if (!isNaN(specifiedDuration) && specifiedDuration > 0 && specifiedDuration <= 480) {
+          chargeDuration = specifiedDuration;
+        } else if (!isNaN(specifiedDuration)) {
+          // Il parametro è un numero ma non è valido
+          bot.sendMessage(chatId, 
+            `⚠️ *Tempo non valido*\n\n` +
+            `Il tempo specificato (${specifiedDuration} minuti) non è valido.\n` +
+            `Per favore, specifica un tempo tra 1 e 480 minuti.\n` +
+            `Esempio: */iniziato 45* per una ricarica di 45 minuti.`,
+            { parse_mode: 'Markdown' });
+          return;
+        }
+      }
+      
+      const session = await sessionHandler.startSession(userId, username, chargeDuration);
+      
+      logger.info(`Session started for user ${userId}, slot ${session.slot_number}, duration ${chargeDuration || config.MAX_CHARGE_TIME} minutes`);
       
       const message = formatters.formatSessionStartMessage(session);
       bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
