@@ -7,6 +7,8 @@ const queueHandler = require('./queueHandler');
 const config = require('../config');
 const moment = require('moment');
 const logger = require('../utils/logger');
+const formatters = require('../utils/formatters');
+const penaltySystem = require('../utils/penaltySystem');
 
 /**
  * Inizia una nuova sessione di ricarica
@@ -16,6 +18,12 @@ const logger = require('../utils/logger');
  */
 async function startSession(userId, username) {
   try {
+    // Verifica l'idoneità dell'utente (controllo ban)
+    const eligibility = await penaltySystem.checkUserEligibility(userId);
+    if (!eligibility.eligible) {
+      throw new Error(eligibility.message);
+    }
+    
     // Verifica se l'utente ha già una sessione attiva
     const existingSession = await Session.findOne({
       telegram_id: userId,
@@ -129,8 +137,20 @@ async function endSession(userId, status = 'completed') {
       // Aggiorna le statistiche dell'utente
       await userHandler.updateUserStats(userId, durationMinutes);
       
-      // Notifica il prossimo utente in coda
-      await queueHandler.notifyNextInQueue();
+      // Calcola se c'è stato ritardo
+      const scheduledEndTime = new Date(session.end_time);
+      const overdueMinutes = Math.max(0, Math.round((endTime - scheduledEndTime) / 60000));
+      
+      // Se c'è stato ritardo e non è stato terminato dall'admin, applica penalità
+      if (overdueMinutes >= 5 && status !== 'admin_terminated') {
+        await penaltySystem.handleExcessiveOvertime(
+          userId, 
+          session._id, 
+          overdueMinutes, 
+          null, // bot non necessario qui
+          config.ADMIN_USER_ID
+        );
+      }
     }
     
     logger.info(`Charging session ended for user ${session.username} (${userId}) - Duration: ${durationMinutes} minutes, Status: ${status}`);
