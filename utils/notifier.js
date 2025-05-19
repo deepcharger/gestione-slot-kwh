@@ -15,11 +15,11 @@ const queueHandler = require('../handlers/queueHandler');
 /**
  * Avvia il sistema di notifiche periodiche
  * @param {Object} bot - Istanza del bot Telegram
- * @param {Function} executeWithLock - Funzione per eseguire operazioni con lock
- * @param {Function} isActiveInstance - Funzione per verificare se l'istanza è attiva
+ * @param {Function} executeWithLock - Funzione per eseguire operazioni con lock (opzionale)
+ * @param {Function} isActiveInstance - Funzione per verificare se l'istanza è attiva (opzionale)
  * @returns {Object} - Riferimenti ai timer avviati
  */
-function startNotificationSystem(bot, executeWithLock, isActiveInstance) {
+function startNotificationSystem(bot, executeWithLock = null, isActiveInstance = null) {
   if (!bot) {
     logger.error('Impossibile avviare il sistema di notifiche: bot non fornito');
     return null;
