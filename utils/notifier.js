@@ -2,24 +2,17 @@ const Session = require('../models/session');
 const System = require('../models/system');
 const Queue = require('../models/queue');
 const User = require('../models/user');
-const config = require('../config');
 const moment = require('moment');
 const logger = require('../utils/logger');
-const mongoose = require('mongoose');
-const queueHandler = require('../handlers/queueHandler');
-
-// Riferimenti ai timer attivi
-let reminderTimer = null;
-let timeoutTimer = null;
-let overdueTimer = null;
-let queueTimeoutTimer = null;
+const formatters = require('../utils/formatters');
+const penaltySystem = require('../utils/penaltySystem');
 
 /**
  * Avvia il sistema di notifiche periodiche
  * @param {Object} bot - Istanza del bot Telegram
  * @returns {Object} - Riferimenti ai timer avviati
  */
-function startNotificationSystem(bot) {
+function startNotificationSystem(bot, executeWithLock, isActiveInstance) {
   if (!bot) {
     logger.error('Impossibile avviare il sistema di notifiche: bot non fornito');
     return null;
@@ -28,16 +21,34 @@ function startNotificationSystem(bot) {
   // Ferma eventuali timer esistenti
   stopNotificationSystem();
   
+  // Riferimenti ai timer attivi
+  let reminderTimer = null;
+  let timeoutTimer = null;
+  let overdueTimer = null;
+  let queueTimeoutTimer = null;
+  
   // Timer per verificare le sessioni in scadenza (promemoria)
   reminderTimer = setInterval(async () => {
     try {
+      // Se abbiamo una funzione per verificare l'istanza attiva, usiamola
+      if (isActiveInstance && !(await isActiveInstance())) {
+        logger.info('Non siamo l\'istanza attiva, salto il controllo delle sessioni in scadenza');
+        return;
+      }
+      
       // Verifica che la connessione MongoDB sia attiva
       if (mongoose.connection.readyState !== 1) {
         logger.warn('Sistema di notifiche: MongoDB non connesso, skip controllo sessioni in scadenza');
         return;
       }
       
-      await checkExpiringSessions(bot);
+      if (executeWithLock) {
+        await executeWithLock('check_expiring_sessions', async () => {
+          await checkExpiringSessions(bot);
+        });
+      } else {
+        await checkExpiringSessions(bot);
+      }
     } catch (error) {
       logger.error('Errore durante il controllo delle sessioni in scadenza:', error);
     }
@@ -46,13 +57,25 @@ function startNotificationSystem(bot) {
   // Timer per verificare le sessioni scadute
   timeoutTimer = setInterval(async () => {
     try {
+      // Se abbiamo una funzione per verificare l'istanza attiva, usiamola
+      if (isActiveInstance && !(await isActiveInstance())) {
+        logger.info('Non siamo l\'istanza attiva, salto il controllo delle sessioni scadute');
+        return;
+      }
+      
       // Verifica che la connessione MongoDB sia attiva
       if (mongoose.connection.readyState !== 1) {
         logger.warn('Sistema di notifiche: MongoDB non connesso, skip controllo sessioni scadute');
         return;
       }
       
-      await checkExpiredSessions(bot);
+      if (executeWithLock) {
+        await executeWithLock('check_expired_sessions', async () => {
+          await checkExpiredSessions(bot);
+        });
+      } else {
+        await checkExpiredSessions(bot);
+      }
     } catch (error) {
       logger.error('Errore durante il controllo delle sessioni scadute:', error);
     }
@@ -61,13 +84,25 @@ function startNotificationSystem(bot) {
   // Timer per inviare promemoria periodici per le sessioni che hanno superato il limite
   overdueTimer = setInterval(async () => {
     try {
+      // Se abbiamo una funzione per verificare l'istanza attiva, usiamola
+      if (isActiveInstance && !(await isActiveInstance())) {
+        logger.info('Non siamo l\'istanza attiva, salto il controllo delle sessioni in ritardo');
+        return;
+      }
+      
       // Verifica che la connessione MongoDB sia attiva
       if (mongoose.connection.readyState !== 1) {
         logger.warn('Sistema di notifiche: MongoDB non connesso, skip controllo sessioni in ritardo');
         return;
       }
       
-      await checkOverdueSessions(bot);
+      if (executeWithLock) {
+        await executeWithLock('check_overdue_sessions', async () => {
+          await checkOverdueSessions(bot);
+        });
+      } else {
+        await checkOverdueSessions(bot);
+      }
     } catch (error) {
       logger.error('Errore durante il controllo delle sessioni in ritardo:', error);
     }
@@ -76,13 +111,28 @@ function startNotificationSystem(bot) {
   // Timer per verificare gli utenti in coda che non hanno iniziato la ricarica
   queueTimeoutTimer = setInterval(async () => {
     try {
+      // Se abbiamo una funzione per verificare l'istanza attiva, usiamola
+      if (isActiveInstance && !(await isActiveInstance())) {
+        logger.info('Non siamo l\'istanza attiva, salto il controllo timeout della coda');
+        return;
+      }
+      
       // Verifica che la connessione MongoDB sia attiva
       if (mongoose.connection.readyState !== 1) {
         logger.warn('Sistema di notifiche: MongoDB non connesso, skip controllo timeout della coda');
         return;
       }
       
-      await queueHandler.checkQueueTimeouts(bot);
+      // Esegui la funzione checkQueueTimeouts del modulo queueHandler
+      const queueHandler = require('../handlers/queueHandler');
+      
+      if (executeWithLock) {
+        await executeWithLock('check_queue_timeouts', async () => {
+          await queueHandler.checkQueueTimeouts(bot);
+        });
+      } else {
+        await queueHandler.checkQueueTimeouts(bot);
+      }
     } catch (error) {
       logger.error('Errore durante il controllo dei timeout della coda:', error);
     }
@@ -95,14 +145,21 @@ function startNotificationSystem(bot) {
     timeoutTimer,
     overdueTimer,
     queueTimeoutTimer,
-    stop: stopNotificationSystem
+    stop: () => {
+      stopNotificationSystem(reminderTimer, timeoutTimer, overdueTimer, queueTimeoutTimer);
+      return true;
+    }
   };
 }
 
 /**
  * Ferma il sistema di notifiche
+ * @param {Object} reminderTimer - Timer dei promemoria
+ * @param {Object} timeoutTimer - Timer dei timeout
+ * @param {Object} overdueTimer - Timer dei ritardi
+ * @param {Object} queueTimeoutTimer - Timer dei timeout della coda
  */
-function stopNotificationSystem() {
+function stopNotificationSystem(reminderTimer, timeoutTimer, overdueTimer, queueTimeoutTimer) {
   if (reminderTimer) {
     clearInterval(reminderTimer);
     reminderTimer = null;
@@ -171,7 +228,7 @@ async function checkExpiringSessions(bot) {
         );
         
         // Genera il messaggio di promemoria
-        const reminderMessage = formatReminderMessage(
+        const reminderMessage = formatters.formatReminderMessage(
           session.username, 
           remainingMinutes, 
           session.end_time
@@ -233,7 +290,7 @@ async function checkExpiredSessions(bot) {
     for (const session of expiredSessions) {
       try {
         // Genera il messaggio di timeout
-        const timeoutMessage = formatTimeoutMessage(
+        const timeoutMessage = formatters.formatTimeoutMessage(
           session.username, 
           config.MAX_CHARGE_TIME
         );
@@ -303,19 +360,33 @@ async function checkOverdueSessions(bot) {
         // Calcola i minuti di ritardo
         const overdueMinutes = Math.round((now - new Date(session.end_time)) / 60000);
         
-        // Invia solo se il ritardo è significativo (dovrebbe essere già garantito dal filtro)
         if (overdueMinutes >= 5) {
-          await bot.sendMessage(
-            session.telegram_id,
-            `⚠️ *PROMEMORIA IMPORTANTE*\n\n` +
-            `@${session.username}, il tuo tempo è scaduto da *${overdueMinutes} minuti*.\n\n` +
-            `🔸 Per favore, libera immediatamente lo slot.\n` +
-            `🔸 Conferma con /terminato quando hai staccato il veicolo.\n\n` +
-            `Gli altri utenti stanno aspettando di poter utilizzare la colonnina. Grazie per la collaborazione!`,
-            { parse_mode: 'Markdown' }
-          );
+          // Genera un messaggio progressivamente più severo in base al ritardo
+          const message = formatters.formatOvertimeMessage(session.username, overdueMinutes);
+          
+          // Invia la notifica
+          await bot.sendMessage(session.telegram_id, message, { parse_mode: 'Markdown' });
           
           logger.info(`Inviato promemoria di ritardo a ${session.username} (${session.telegram_id}) - ${overdueMinutes} minuti di ritardo`);
+          
+          // Applica penalità per ritardi eccessivi
+          await penaltySystem.handleExcessiveOvertime(
+            session.telegram_id, 
+            session._id, 
+            overdueMinutes, 
+            bot, 
+            config.ADMIN_USER_ID
+          );
+          
+          // Notifica anche all'admin per ritardi gravi (ogni 30 minuti)
+          if (config.ADMIN_USER_ID && overdueMinutes >= 30 && overdueMinutes % 30 === 0) {
+            await bot.sendMessage(
+              config.ADMIN_USER_ID,
+              `🚨 *Segnalazione ritardo grave*\n\n` +
+              `L'utente @${session.username} sta occupando lo slot ${session.slot_number} da *${overdueMinutes} minuti* oltre il tempo massimo.`,
+              { parse_mode: 'Markdown' }
+            );
+          }
         }
       } catch (err) {
         logger.error(`Errore nell'invio del promemoria di ritardo a ${session.username}:`, err);
@@ -325,62 +396,6 @@ async function checkOverdueSessions(bot) {
     logger.error('Error checking overdue sessions:', error);
     throw error;
   }
-}
-
-/**
- * Formatta un messaggio di promemoria per la fine della ricarica
- * @param {String} username - Username dell'utente
- * @param {Number} remainingMinutes - Minuti rimanenti
- * @param {Date} endTime - Orario di fine ricarica
- * @returns {String} - Messaggio formattato
- */
-function formatReminderMessage(username, remainingMinutes, endTime) {
-  const endTimeStr = formatTime(endTime);
-  
-  return `
-⏰ *Promemoria ricarica, @${username}*
-
-Ti restano solo *${remainingMinutes} minuti* prima del termine.
-
-*Informazioni:*
-- La ricarica terminerà alle *${endTimeStr}*
-- Prepara il veicolo per essere scollegato
-- Al termine, conferma con */terminato*
-
-Grazie per la collaborazione! Altri utenti potrebbero essere in attesa. 👍
-`;
-}
-
-/**
- * Formatta un messaggio di timeout per la fine della ricarica
- * @param {String} username - Username dell'utente
- * @param {Number} maxChargeTime - Tempo massimo di ricarica
- * @returns {String} - Messaggio formattato
- */
-function formatTimeoutMessage(username, maxChargeTime) {
-  return `
-⚠️ *TEMPO SCADUTO, @${username}*
-
-Il tuo tempo di ricarica di *${maxChargeTime} minuti* è terminato.
-
-*Cosa fare immediatamente:*
-1. Concludi la ricarica sull'app
-2. Scollega il veicolo dalla colonnina
-3. Conferma con */terminato* per liberare lo slot
-
-⚡ Altri utenti sono in attesa per utilizzare la colonnina.
-Grazie per la tua collaborazione!
-`;
-}
-
-/**
- * Formatta un timestamp in formato HH:MM
- * @param {Date|String} timestamp - Timestamp da formattare
- * @returns {String} - Timestamp formattato
- */
-function formatTime(timestamp) {
-  const date = new Date(timestamp);
-  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 }
 
 module.exports = {
