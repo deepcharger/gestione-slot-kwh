@@ -55,7 +55,7 @@ let lastTelegramConflictTime = null;
 const SHUTDOWN_TIMEOUT = 15000; // 15 secondi per dare più tempo
 
 // Logging all'avvio
-logger.info('====== AVVIO BOT GREEN-CHARGE ======');
+logger.info('====== AVVIO BOT SLOTMANAGER ======');
 logger.info(`Versione Node: ${process.version}`);
 logger.info(`Versione mongoose: ${mongoose.version}`);
 logger.info(`ID Istanza: ${INSTANCE_ID}`);
@@ -561,7 +561,7 @@ mongoose.connect(config.MONGODB_URI, mongooseOptions)
   })
   .catch(err => {
     logger.error('❌ Errore di connessione a MongoDB:', err);
-    logger.error(`URI MongoDB: ${config.MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//****:****@')}`);
+    logger.error(`URI MongoDB: ${config.MONGODB_URI ? config.MONGODB_URI.replace(/\/\/([^:]+):([^@]+)@/, '//****:****@') : 'undefined'}`);
     process.exit(1);
   });
 
@@ -1028,91 +1028,44 @@ function startLockCheck() {
 }
 
 /**
- * Implementa un sistema di "keep-alive" per prevenire l'ibernazione
+ * Controlla se è stato inviato un messaggio di notifica di avvio recentemente
+ * @returns {Promise<boolean>} - true se è stata inviata una notifica nelle ultime 2 ore
  */
-function setupKeepAlive() {
-  // Inizializza un intervallo che esegue un'operazione leggera ogni 10 minuti
-  const keepAliveInterval = setInterval(async () => {
-    if (isShuttingDown) return;
+async function checkLastStartupNotification() {
+  try {
+    // Cerca notifiche nelle ultime 2 ore
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const recentNotification = await StartupNotification.findOne({
+      timestamp: { $gt: twoHoursAgo },
+      notification_type: 'startup'
+    });
     
-    try {
-      logger.debug('Esecuzione keep-alive per prevenire ibernazione');
-      
-      // Esegui una query leggera sul database
-      const count = await User.countDocuments().limit(1);
-      
-      // Se il bot è attivo, invia un messaggio a te stesso (admin) ogni 4 ore
-      // per mantenere attiva la connessione Telegram
-      const now = new Date();
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
-      
-      // Solo alle 4, 8, 12, 16, 20, 24 ore e solo se i minuti sono tra 0 e 5
-      if (hours % 4 === 0 && minutes >= 0 && minutes <= 5 && bot && config.ADMIN_USER_ID) {
-        try {
-          // Aggiorniamo lo stato del bot senza inviare un messaggio all'admin
-          await bot.getMe();
-        } catch (err) {
-          logger.warn('Errore nel keep-alive Telegram:', err);
-        }
-      }
-    } catch (err) {
-      logger.error('Errore nell\'esecuzione del keep-alive:', err);
-    }
-  }, 10 * 60 * 1000); // 10 minuti
-  
-  return keepAliveInterval;
+    return !!recentNotification;
+  } catch (error) {
+    logger.error('Errore nel controllo delle notifiche di avvio:', error);
+    // In caso di errore, assumiamo che non ci siano notifiche recenti
+    return false;
+  }
 }
 
 /**
- * Rilascia tutti i lock per questa istanza
+ * Salva un record per la notifica di avvio
+ * @param {string} type - Tipo di notifica ('startup', 'shutdown', 'error')
+ * @param {string} message - Messaggio associato alla notifica
  */
-async function releaseAllLocks() {
+async function saveStartupNotification(type = 'startup', message = '') {
   try {
-    logger.info(`Rilascio di tutti i lock per l'istanza ${INSTANCE_ID}...`);
-    
-    // Rilascia il lock di esecuzione
-    const executionLockResult = await Lock.deleteOne({ 
-      name: 'execution_lock', 
-      lock_type: 'execution',
-      instance_id: INSTANCE_ID 
+    // Crea un nuovo record di notifica
+    const notification = new StartupNotification({
+      instance_id: INSTANCE_ID,
+      notification_type: type,
+      message: message
     });
     
-    if (executionLockResult.deletedCount > 0) {
-      logger.info(`Lock di esecuzione rilasciato da ${INSTANCE_ID}`);
-    } else {
-      logger.info(`Nessun lock di esecuzione da rilasciare per ${INSTANCE_ID}`);
-    }
-    
-    // Rilascia il master lock
-    const masterLockResult = await Lock.deleteOne({ 
-      name: 'master_lock', 
-      lock_type: 'master',
-      instance_id: INSTANCE_ID 
-    });
-    
-    if (masterLockResult.deletedCount > 0) {
-      logger.info(`Master lock rilasciato da ${INSTANCE_ID}`);
-    } else {
-      logger.info(`Nessun master lock da rilasciare per ${INSTANCE_ID}`);
-    }
-    
-    // Rilascia tutti i task lock di questa istanza
-    const taskLockResult = await TaskLock.deleteMany({
-      instance_id: INSTANCE_ID
-    });
-    
-    if (taskLockResult.deletedCount > 0) {
-      logger.info(`Rilasciati ${taskLockResult.deletedCount} task lock`);
-    }
-    
-    // Rimuovi il lock file locale
-    localLockManager.removeLockFile();
-    
-    return true;
+    await notification.save();
+    logger.info(`Notifica di ${type} salvata`);
   } catch (error) {
-    logger.error(`Errore durante il rilascio dei lock:`, error);
-    return false;
+    logger.error(`Errore nel salvataggio della notifica di ${type}:`, error);
   }
 }
 
@@ -1460,9 +1413,9 @@ async function startBotImplementation() {
       logger.info(`Tentativo di invio messaggio di avvio all'admin ${config.ADMIN_USER_ID}...`);
       try {
         await bot.sendMessage(config.ADMIN_USER_ID, 
-          `🤖 *Green-Charge Bot avviato*\n\n` +
+          `🔋 *SlotManager Bot avviato*\n\n` +
           `Il bot è ora online e pronto all'uso.\n\n` +
-          `Versione: 1.0.0\n` +
+          `Versione: 1.5.1\n` +
           `Avviato: ${new Date().toLocaleString('it-IT')}\n` +
           `ID Istanza: ${INSTANCE_ID}`,
           { parse_mode: 'Markdown' });
@@ -1522,223 +1475,3 @@ async function startBotImplementation() {
       setTimeout(startBot, 30000);
     }
   }
-}
-
-/**
- * Controlla se è stato inviato un messaggio di notifica di avvio recentemente
- * @returns {Promise<boolean>} - true se è stata inviata una notifica nelle ultime 2 ore
- */
-async function checkLastStartupNotification() {
-  try {
-    // Cerca notifiche nelle ultime 2 ore
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-    const recentNotification = await StartupNotification.findOne({
-      timestamp: { $gt: twoHoursAgo },
-      notification_type: 'startup'
-    });
-    
-    return !!recentNotification;
-  } catch (error) {
-    logger.error('Errore nel controllo delle notifiche di avvio:', error);
-    // In caso di errore, assumiamo che non ci siano notifiche recenti
-    return false;
-  }
-}
-
-/**
- * Salva un record per la notifica di avvio
- * @param {string} type - Tipo di notifica ('startup', 'shutdown', 'error')
- * @param {string} message - Messaggio associato alla notifica
- */
-async function saveStartupNotification(type = 'startup', message = '') {
-  try {
-    // Crea un nuovo record di notifica
-    const notification = new StartupNotification({
-      instance_id: INSTANCE_ID,
-      notification_type: type,
-      message: message
-    });
-    
-    await notification.save();
-    logger.info(`Notifica di ${type} salvata`);
-  } catch (error) {
-    logger.error(`Errore nel salvataggio della notifica di ${type}:`, error);
-  }
-}
-
-/**
- * Esegue un processo di shutdown controllato
- * @param {string} reason - Motivo dello shutdown
- */
-async function performShutdown(reason = 'NORMAL') {
-  // Evita shutdown multipli
-  if (isShuttingDown) {
-    logger.info(`Shutdown già in corso (${instanceTracker.terminationReason}), ignorando la richiesta di terminazione per ${reason}`);
-    return;
-  }
-  
-  // Imposta il flag di shutdown
-  isShuttingDown = true;
-  
-  // Imposta lo stato di terminazione nel tracker
-  instanceTracker.startTermination(reason);
-  logger.info(`Bot in fase di terminazione (${reason})`);
-  
-  try {
-    // Ferma tutti gli intervalli
-    if (masterLockHeartbeatInterval) {
-      clearInterval(masterLockHeartbeatInterval);
-      masterLockHeartbeatInterval = null;
-    }
-    
-    if (executionLockHeartbeatInterval) {
-      clearInterval(executionLockHeartbeatInterval);
-      executionLockHeartbeatInterval = null;
-    }
-    
-    if (lockCheckInterval) {
-      clearInterval(lockCheckInterval);
-      lockCheckInterval = null;
-    }
-    
-    if (keepAliveInterval) {
-      clearInterval(keepAliveInterval);
-      keepAliveInterval = null;
-    }
-    
-    // Ferma il polling del bot PRIMA di rilasciare i lock
-    // Questo è importante per evitare conflitti
-    await stopBot();
-    
-    // Attendi che il bot si fermi completamente
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // Ora rilascia i lock
-    await releaseAllLocks();
-    
-    // Resetta il contatore dei retry
-    pollingRetryCount = 0;
-    
-    // Resetta i flag di conflitto
-    telegramConflictDetected = false;
-    lastTelegramConflictTime = null;
-    
-    // Resetta il flag di avvio
-    isBotStarting = false;
-    
-    // Resetta il contatore degli errori di rete
-    networkErrorCount = 0;
-    
-    // Registra informazioni sull'istanza
-    logger.info(`L'istanza ha tentato ${instanceTracker.restartCount} riavvii durante il ciclo di vita`);
-    
-    // Salva notifica di shutdown
-    try {
-      await saveStartupNotification('shutdown', `Terminazione: ${reason}`);
-    } catch (err) {
-      logger.error('Errore nel salvataggio della notifica di shutdown:', err);
-    }
-    
-    // Chiudi la connessione a MongoDB
-    try {
-      logger.info('Chiusura connessione al database...');
-      await mongoose.connection.close();
-      logger.info('Connessione al database chiusa');
-    } catch (err) {
-      logger.error('Errore nella chiusura della connessione MongoDB:', err);
-    }
-    
-    // Aggiungi un ritardo prima della terminazione per far completare tutte le operazioni pendenti
-    logger.info(`Uscita con codice 0 dopo ${SHUTDOWN_TIMEOUT}ms`);
-    setTimeout(() => {
-      process.exit(0);
-    }, SHUTDOWN_TIMEOUT);
-  } catch (error) {
-    logger.error('Errore durante lo shutdown:', error);
-    setTimeout(() => {
-      process.exit(1);
-    }, 1000);
-  }
-}
-
-/**
- * Implementa un sistema di "keep-alive" per prevenire l'ibernazione
- */
-function setupKeepAlive() {
-  // Inizializza un intervallo che esegue un'operazione leggera ogni 10 minuti
-  const keepAliveInterval = setInterval(async () => {
-    if (isShuttingDown) return;
-    
-    try {
-      logger.debug('Esecuzione keep-alive per prevenire ibernazione');
-      
-      // Esegui una query leggera sul database
-      const count = await User.countDocuments().limit(1);
-      
-      // Se il bot è attivo, invia un messaggio a te stesso (admin) ogni 4 ore
-      // per mantenere attiva la connessione Telegram
-      const now = new Date();
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
-      
-      // Solo alle 4, 8, 12, 16, 20, 24 ore e solo se i minuti sono tra 0 e 5
-      if (hours % 4 === 0 && minutes >= 0 && minutes <= 5 && bot && config.ADMIN_USER_ID) {
-        try {
-          // Aggiorniamo lo stato del bot senza inviare un messaggio all'admin
-          await bot.getMe();
-        } catch (err) {
-          logger.warn('Errore nel keep-alive Telegram:', err);
-        }
-      }
-    } catch (err) {
-      logger.error('Errore nell\'esecuzione del keep-alive:', err);
-    }
-  }, 10 * 60 * 1000); // 10 minuti
-  
-  return keepAliveInterval;
-}
-
-// Avvia il keep-alive
-keepAliveInterval = setupKeepAlive();
-
-// Gestione dei segnali del sistema operativo
-process.on('SIGINT', () => {
-  logger.info('Segnale SIGINT ricevuto, spegnimento bot in corso...');
-  performShutdown('SIGINT');
-});
-
-process.on('SIGTERM', () => {
-  logger.info('Segnale SIGTERM ricevuto, spegnimento bot in corso...');
-  performShutdown('SIGTERM');
-});
-
-// Gestione eccezioni non catturate
-process.on('uncaughtException', (err) => {
-  logger.error('❌ Eccezione non gestita:', err);
-  logger.error('Stack trace:', err.stack);
-  logger.logMemoryUsage();
-  
-  // Se è un'eccezione grave, rilascia i lock e termina
-  performShutdown('UNCAUGHT_EXCEPTION');
-});
-
-// Gestione promise rejection non gestite
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('❌ Promise rejection non gestita:', reason);
-  logger.logMemoryUsage();
-  
-  // Solo log, non terminiamo l'istanza per una promise non gestita
-});
-
-// Esportazione per test
-module.exports = {
-  acquireTaskLock,
-  releaseTaskLock,
-  executeWithLock,
-  isActiveInstance,
-  restartPolling,
-  emergencyReleaseTelegram, 
-  emergencyCleanupLocks,
-  cleanupTelegramTestLocks,
-  INSTANCE_ID
-};
