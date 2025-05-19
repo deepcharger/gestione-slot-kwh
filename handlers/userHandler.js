@@ -1,6 +1,8 @@
 const User = require('../models/user');
 const config = require('../config');
 const logger = require('../utils/logger');
+const penaltySystem = require('../utils/penaltySystem');
+const formatters = require('../utils/formatters');
 
 /**
  * Registra un nuovo utente o aggiorna i dati di un utente esistente
@@ -111,10 +113,60 @@ async function getUsers(filter = {}) {
   }
 }
 
+/**
+ * Ottiene lo stato dell'utente (incluse le penalità)
+ * @param {Number} userId - ID Telegram dell'utente
+ * @returns {Promise<Object>} - Oggetto con stato utente
+ */
+async function getUserStatus(userId) {
+  try {
+    const user = await User.findOne({ telegram_id: userId });
+    
+    if (!user) {
+      return { 
+        exists: false,
+        message: 'Utente non registrato. Usa /start per registrarti.'
+      };
+    }
+    
+    // Controlla ban scaduti
+    if (user.temporarily_banned && user.ban_end_date) {
+      if (new Date() > user.ban_end_date) {
+        user.temporarily_banned = false;
+        user.ban_end_date = null;
+        await user.save();
+      }
+    }
+    
+    // Controlla reset penalità dopo 30 giorni
+    if (user.penalty_points > 0 && user.last_penalty_date) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      if (user.last_penalty_date < thirtyDaysAgo) {
+        user.penalty_points = 0;
+        await user.save();
+      }
+    }
+    
+    const statusMessage = formatters.formatUserStatusMessage(user);
+    
+    return {
+      exists: true,
+      user,
+      message: statusMessage
+    };
+  } catch (error) {
+    logger.error(`Error getting user status for ${userId}:`, error);
+    throw error;
+  }
+}
+
 module.exports = {
   registerUser,
   getUser,
   isAdmin,
   updateUserStats,
-  getUsers
+  getUsers,
+  getUserStatus
 };
