@@ -2,7 +2,7 @@
 
 Bot Telegram per gestire la coda e i turni delle colonnine di ricarica elettrica in spazi condivisi.
 
-![Version](https://img.shields.io/badge/version-1.5.1-blue)
+![Version](https://img.shields.io/badge/version-1.6.0-blue)
 ![Node](https://img.shields.io/badge/node-%3E%3D16.0.0-green)
 ![License](https://img.shields.io/badge/license-MIT-orange)
 
@@ -20,12 +20,14 @@ Tramite Telegram, gli utenti possono prenotare il proprio turno, ricevere notifi
 - **Notifiche in tempo reale**: avvisi quando è il proprio turno e promemoria prima della scadenza
 - **Monitoraggio dello stato**: verifica della disponibilità delle colonnine e della propria posizione in coda
 - **Gestione del tempo**: ogni utente ha un tempo massimo predefinito per la ricarica
+- **Sistema di penalità**: incentiva l'uso responsabile con un sistema di punti penalità per ritardi
 
 ### Per gli amministratori:
 - **Pannello di controllo completo**: comandi dedicati per monitorare e gestire l'intero sistema
 - **Statistiche e analisi**: dati dettagliati sull'utilizzo delle colonnine
 - **Configurazione flessibile**: possibilità di modificare il numero di colonnine, tempi massimi e altre impostazioni
 - **Strumenti di gestione**: reset degli slot, rimozione di utenti dalla coda, invio di annunci globali
+- **Monitoraggio delle penalità**: controllo degli utenti con penalità e ban temporanei
 
 ## 🛠️ Tecnologie utilizzate
 
@@ -103,6 +105,7 @@ npm start
 - `/iniziato` - Conferma l'inizio della ricarica
 - `/terminato` - Conferma la fine della ricarica
 - `/status` - Visualizza lo stato attuale delle colonnine
+- `/stato_utente` - Visualizza il tuo stato e eventuali penalità
 - `/help` - Mostra l'elenco dei comandi disponibili
 - `/dove_sono` - Mostra l'ID della chat corrente
 
@@ -115,6 +118,7 @@ npm start
 - `/admin_set_charge_time [minuti]` - Imposta il tempo massimo di ricarica
 - `/admin_set_reminder_time [minuti]` - Imposta il tempo di promemoria
 - `/admin_notify_all [messaggio]` - Invia un messaggio a tutti gli utenti
+- `/admin_check_penalties` - Visualizza utenti con penalità
 - `/admin_reset_system` - Resetta completamente il sistema
 - `/admin_help` - Mostra i comandi admin disponibili
 
@@ -139,6 +143,21 @@ Il bot può essere ospitato su qualsiasi piattaforma che supporti Node.js e sia 
 4. Il bot avvisa l'utente 5 minuti prima della scadenza del tempo
 5. L'utente completa la ricarica e conferma con `/terminato`
 6. Il bot notifica il prossimo utente in coda, se presente
+
+## 🔒 Sistema di penalità
+
+Per responsabilizzare l'utilizzo delle colonnine e prevenire l'occupazione prolungata, il bot include un sistema di penalità:
+
+1. I ritardi dopo il tempo massimo comportano punti penalità:
+   - 5-15 minuti: 1 punto
+   - 15-30 minuti: 2 punti
+   - Oltre 30 minuti: 3 punti per ogni mezz'ora
+
+2. Al raggiungimento di 10 punti penalità, l'account viene temporaneamente sospeso per 7 giorni
+
+3. I punti penalità vengono azzerati automaticamente dopo 30 giorni dall'ultima infrazione
+
+4. Gli utenti possono visualizzare il proprio stato e le eventuali penalità con il comando `/stato_utente`
 
 ## 📊 Monitoraggio e manutenzione
 
@@ -170,7 +189,13 @@ Distribuito sotto licenza MIT. Vedi `LICENSE` per maggiori informazioni.
 
 ## 📋 Changelog
 
+### v1.6.0 - (19 Maggio 2025)
+- **Aggiunto**: Sistema di penalità per responsabilizzare l'uso delle colonnine
+- **Aggiunto**: Nuovo comando `/stato_utente` per visualizzare lo stato e le penalità
+
 ### v1.5.1 - (14 Maggio 2025)
+- **Aggiunto**: Sistema di penalità per responsabilizzare l'uso delle colonnine
+- **Aggiunto**: Nuovo comando `/stato_utente` per visualizzare lo stato e le penalità
 - **Aggiunto**: Supporto per il fuso orario italiano (Europe/Rome)
 - **Migliorato**: Visualizzazione orari nel formato locale italiano
 - **Corretto**: Orari nelle notifiche di inizio/fine ricarica
