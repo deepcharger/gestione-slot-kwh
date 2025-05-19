@@ -1,9 +1,9 @@
-const mongoose = require('mongoose');
-
 /**
- * Schema per i lock del sistema
+ * Modello per i lock del sistema
  * Supporta sia lock master che lock di esecuzione
  */
+const mongoose = require('mongoose');
+
 const lockSchema = new mongoose.Schema({
   name: {
     type: String,
