@@ -1,3 +1,6 @@
+/**
+ * Utilità per formattare i messaggi per gli utenti
+ */
 const config = require('../config');
 
 /**
