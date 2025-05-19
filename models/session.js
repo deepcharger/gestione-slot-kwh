@@ -1,3 +1,7 @@
+/**
+ * Modello per i dati delle sessioni
+ * Versione aggiornata con supporto per durate personalizzate
+ */
 const mongoose = require('mongoose');
 
 const sessionSchema = new mongoose.Schema({
@@ -33,6 +37,14 @@ const sessionSchema = new mongoose.Schema({
   timeout_notified: {
     type: Boolean,
     default: false
+  },
+  custom_duration: {  // Nuovo campo per indicare se la durata è personalizzata
+    type: Boolean,
+    default: false
+  },
+  duration_minutes: { // Nuovo campo per memorizzare la durata effettiva in minuti
+    type: Number,
+    default: null
   }
 }, { timestamps: true });
 
