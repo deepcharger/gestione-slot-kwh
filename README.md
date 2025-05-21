@@ -68,13 +68,12 @@ cp .env.example .env
 BOT_TOKEN=1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789
 
 # Configurazione MongoDB
-MONGODB_URI=mongodb+srv://username:password@xxxx.mongodb.net/xxxxxx
-
+MONGODB_URI=(mondodb link)
 # Configurazione admin
 ADMIN_USER_ID=123456789
 
 # Configurazione del gruppo autorizzato (opzionale)
-AUTHORIZED_GROUP_ID=-1001234567890
+AUTHORIZED_GROUP_ID=-1234567890
 RESTRICT_TO_GROUP=false
 
 # Configurazione del sistema
