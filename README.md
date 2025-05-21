@@ -68,7 +68,7 @@ cp .env.example .env
 BOT_TOKEN=1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789
 
 # Configurazione MongoDB
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/slot-manager-bot
+MONGODB_URI=mongodb+srv://username:password@xxxx.mongodb.net/xxxxxx
 
 # Configurazione admin
 ADMIN_USER_ID=123456789
