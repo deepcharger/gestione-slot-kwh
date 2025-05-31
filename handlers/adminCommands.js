@@ -652,34 +652,40 @@ class AdminCommands {
       // Ottieni le statistiche complete
       const stats = await queueHandler.getSystemStats();
       
-      let message = `📊 *STATISTICHE DEL SISTEMA*\n\n`;
+      // Dividi il messaggio in parti più piccole per evitare problemi di parsing
+      let message1 = `📊 *STATISTICHE DEL SISTEMA*\n\n`;
       
-      // Statistiche generali
-      message += `⚡ *Utilizzo colonnine*\n`;
-      message += `- Colonnine totali: ${stats.total_slots}\n`;
-      message += `- Totale ricariche completate: ${stats.total_charges_completed}\n`;
-      message += `- Ricariche oggi: ${stats.charges_today}\n`;
-      message += `- Tempo medio di ricarica: ${stats.avg_charge_time} min\n\n`;
+      // Prima parte: Statistiche generali
+      message1 += `⚡ *Utilizzo colonnine*\n`;
+      message1 += `- Colonnine totali: ${stats.total_slots}\n`;
+      message1 += `- Totale ricariche completate: ${stats.total_charges_completed}\n`;
+      message1 += `- Ricariche oggi: ${stats.charges_today}\n`;
+      message1 += `- Tempo medio di ricarica: ${stats.avg_charge_time} min\n\n`;
       
-      // Statistiche utenti
-      message += `👥 *Utenti*\n`;
-      message += `- Utenti totali: ${stats.total_users}\n`;
-      message += `- Utenti attivi (ultimi 30 giorni): ${stats.active_users}\n`;
-      message += `- Utenti con penalità: ${stats.users_with_penalties}\n`;
-      message += `- Utenti bannati: ${stats.banned_users}\n\n`;
+      // Seconda parte: Statistiche utenti
+      message1 += `👥 *Utenti*\n`;
+      message1 += `- Utenti totali: ${stats.total_users}\n`;
+      message1 += `- Utenti attivi (ultimi 30 giorni): ${stats.active_users}\n`;
+      message1 += `- Utenti con penalità: ${stats.users_with_penalties}\n`;
+      message1 += `- Utenti bannati: ${stats.banned_users}\n`;
       
-      // Stato attuale
-      message += `🔌 *Stato attuale*\n`;
-      message += `- Colonnine disponibili: ${stats.current_status.slots_available}/${stats.total_slots}\n`;
-      message += `- Colonnine occupate: ${stats.current_status.slots_occupied}/${stats.total_slots}\n`;
-      message += `- Utenti in coda: ${stats.current_status.queue_length}\n\n`;
+      // Invia il primo messaggio
+      await bot.sendMessage(chatId, message1, { parse_mode: 'Markdown' });
+      
+      // Terza parte: Stato attuale
+      let message2 = `🔌 *Stato attuale*\n`;
+      message2 += `- Colonnine disponibili: ${stats.current_status.slots_available}/${stats.total_slots}\n`;
+      message2 += `- Colonnine occupate: ${stats.current_status.slots_occupied}/${stats.total_slots}\n`;
+      message2 += `- Utenti in coda: ${stats.current_status.queue_length}\n\n`;
       
       // Suggerimenti per altri comandi
-      message += `ℹ️ *Altre informazioni*\n`;
-      message += `- Stato dettagliato: /admin_status\n`;
-      message += `- Controllo penalità: /admin_check_penalties\n`;
+      message2 += `ℹ️ *Altre informazioni*\n`;
+      message2 += `- Stato dettagliato: /admin_status\n`;
+      message2 += `- Controllo penalità: /admin_check_penalties`;
       
-      bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+      // Invia il secondo messaggio
+      await bot.sendMessage(chatId, message2, { parse_mode: 'Markdown' });
+      
     } catch (error) {
       logger.error('Error in /admin_stats command:', error);
       bot.sendMessage(chatId, `❌ Errore: ${error.message}`);
